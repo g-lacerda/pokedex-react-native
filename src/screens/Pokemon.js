@@ -1,10 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, Animated } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, Animated, TouchableOpacity } from 'react-native';
 import { connect } from 'react-redux';
 import ProgressBar from './Components/ProgressBar';
 import Divider from './Components/Divider';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-
+import { useNavigation } from '@react-navigation/native';
 
 class Pokemon extends React.Component {
 
@@ -61,6 +61,8 @@ class Pokemon extends React.Component {
 
     render() {
 
+        const { navigation } = this.props;
+
         const rotation = this.rotation.interpolate({
             inputRange: [0, 1],
             outputRange: ['0deg', '360deg'],
@@ -93,6 +95,24 @@ class Pokemon extends React.Component {
 
                 <View style={pokemonViewContainer}>
                     <View style={styles.textAndTypeContainer}>
+                        <View style={styles.backButton}>
+                            <TouchableOpacity
+                                onPress={() => navigation.goBack()}
+                                activeOpacity={1}
+                                style={{
+                                    backgroundColor: 'rgba(0,0,0,0)',
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                }}
+                            >
+                                <Ionicons
+                                    name="chevron-back"
+                                    color="#eee"
+                                    size={40}
+                                />
+                            </TouchableOpacity>
+                        </View>
+
                         <Text style={styles.name}>
                             {capitalizeFirstLetter(pokemon.name)}
                         </Text>
@@ -244,7 +264,7 @@ const styles = StyleSheet.create({
         borderTopLeftRadius: 50,
         borderTopRightRadius: 50,
         overflow: 'hidden',
-        flex: 2
+        flex: 1
     },
     scrollView: {
         padding: 20,
@@ -374,6 +394,9 @@ const styles = StyleSheet.create({
         borderBottomWidth: 2,
         borderBottomColor: 'navy',
     },
+    backButton: {
+        paddingBottom: 15
+    }
 });
 
 const mapStateToProps = (state) => ({

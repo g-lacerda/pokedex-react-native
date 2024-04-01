@@ -49,7 +49,7 @@ const AppContent = () => {
       <Stack.Navigator initialRouteName="Loading">
         <Stack.Screen name="Loading" component={Loading} options={{ headerShown: false }} />
         <Stack.Screen name="Home" component={Home} options={{ headerShown: false }} />
-        <Stack.Screen name="Pokemon" component={Pokemon} />
+        <Stack.Screen name="Pokemon" component={Pokemon} options={{ headerShown: false }} />
       </Stack.Navigator>
     </NavigationContainer>
   );
