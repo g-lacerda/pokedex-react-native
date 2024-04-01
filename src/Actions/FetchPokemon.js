@@ -110,7 +110,7 @@ export const fetchPokemons = (offset = 0) => async (dispatch) => {
                     'ground': { 'background': '#d4b25c', 'font': '#eee' },
                     'rock': { 'background': '#ffbb33', 'font': '#eee' },
                     'psychic': { 'background': '#ff4dd2', 'font': '#eee' },
-                    'ice': { 'background': '#80ffff', 'font': '#1a1a1a' },
+                    'ice': { 'background': '#52bdc7', 'font': '#1a1a1a' },
                     'bug': { 'background': '#9cad1a', 'font': '#eee' },
                     'ghost': { 'background': '#26004d', 'font': '#eee' },
                     'steel': { 'background': '#a6a6a6', 'font': '#1a1a1a' },
