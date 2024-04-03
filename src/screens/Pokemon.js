@@ -4,6 +4,7 @@ import { connect } from 'react-redux';
 import ProgressBar from './Components/ProgressBar';
 import Divider from './Components/Divider';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 
 class Pokemon extends React.Component {
@@ -69,6 +70,8 @@ class Pokemon extends React.Component {
         });
 
         const pokemon = this.findPokemonById();
+        console.log(pokemon);
+
         if (!pokemon) {
             return <Text>Pokémon não encontrado.</Text>;
         }
@@ -92,7 +95,6 @@ class Pokemon extends React.Component {
 
         return (
             <View style={rootView}>
-
                 <View style={pokemonViewContainer}>
                     <View style={styles.textAndTypeContainer}>
                         <View style={styles.backButton}>
@@ -129,17 +131,19 @@ class Pokemon extends React.Component {
                     </View>
                     <Animated.Image source={require('../Images/pokeball.png')} style={[styles.backgroundImg, { transform: [{ rotate: rotation }] }]} />
                     <Image source={{ uri: pokemon.image }} style={styles.img} />
-
                 </View>
+
 
                 <View style={containerScrollView}>
-                    <ScrollView contentContainerStyle={styles.scrollView}>
-                        {this.renderTabs()}
+                    <View style={styles.scrollView}>
+                    {this.renderTabs()}
+                    <ScrollView style={styles.scrollView}>
                         {this.renderContent()}
-
                     </ScrollView>
+                    </View>
                 </View>
             </View>
+
         );
     }
 
@@ -235,7 +239,16 @@ class Pokemon extends React.Component {
             case 'Evolution':
                 return (
                     <View>
-                        <Text style={styles.contentText}>/* Conteúdo de Evolution aqui */</Text>
+                        {pokemon.evolutions.map((evolution, index) => (
+                            <View key={index} style={{ alignItems: 'center', marginBottom: 20 }}>
+                                {index > 0 && <Ionicons name="arrow-down" color="#000" size={40} />}
+                                <Text style={styles.descriptionText}>{evolution.name}</Text>
+                                <Text style={styles.descriptionText}>
+                                    Level {(evolution.min_level === undefined || evolution.min_level === 0) ? "1" : evolution.min_level.toString()}
+                                </Text>
+                                <Image source={{ uri: evolution.image }} style={styles.evolutionsImages} />
+                            </View>
+                        ))}
                     </View>
                 );
             case 'Moves':
@@ -327,6 +340,10 @@ const styles = StyleSheet.create({
         right: 0,
         bottom: 0,
         zIndex: 1
+    },
+    evolutionsImages: {
+        width: 200,
+        height: 200
     },
     backgroundImg: {
         position: 'absolute',
