@@ -1,3 +1,5 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 export const fetchPokemonsRequest = () => ({
     type: 'fetch_pokemons_request'
 });
@@ -12,15 +14,22 @@ export const fetchPokemonsFailure = (error) => ({
     payload: error
 });
 
-export const fetchPokemons = (offset = 0) => async (dispatch) => {
+export const fetchPokemons = () => async (dispatch) => {
+    const cachedPokemons = await AsyncStorage.getItem('pokemons');
+    const limit = 1025;
+
+    if (cachedPokemons) {
+        const pokemonsArray = JSON.parse(cachedPokemons);
+        if (pokemonsArray.length == limit) {
+            dispatch(fetchPokemonsSuccess(JSON.parse(cachedPokemons)));
+            return;
+        }
+
+    }
     dispatch(fetchPokemonsRequest());
     try {
-        const limit = 40;
-        const maxPokemon = 1025;
-        const remaining = maxPokemon - offset;
-        const effectiveLimit = Math.min(limit, remaining);
-
-        const response = await fetch(`https://pokeapi.co/api/v2/pokemon?limit=${effectiveLimit}&offset=${offset}`);
+        const url = `https://pokeapi.co/api/v2/pokemon?limit=${limit}`;
+        const response = await fetch(url);
         const data = await response.json();
 
         if (response.ok) {
@@ -34,10 +43,14 @@ export const fetchPokemons = (offset = 0) => async (dispatch) => {
                 const speciesResponse = await fetch(`https://pokeapi.co/api/v2/pokemon-species/${details.id}`);
                 const speciesData = await speciesResponse.json();
 
+                const firstAppearance = (details.sprites.versions);
+                const formattedFirstAppearance = findFirstAppearance(firstAppearance)
+
+
                 const evolutionChainResponse = await fetch(speciesData.evolution_chain.url);
                 const evolutionChainData = await evolutionChainResponse.json();
 
-                const evolutions = await processEvolutionChain(evolutionChainData);
+                const evolutions = await processEvolutionChain(evolutionChainData, details.id);
 
                 const typesFormatted = details.types.map(type => ({ name: capitalizeFirstLetter(type.type.name), url: type.type.url }));
                 const statsFormatted = details.stats.map(stat => {
@@ -52,24 +65,24 @@ export const fetchPokemons = (offset = 0) => async (dispatch) => {
                 let name = adjustName(pokemon.name);
 
                 const types = {
-                    'normal': { 'background': '#9d9a6b', 'font': '#1a1a1a' },
+                    'normal': { 'background': '#9d9a6b', 'font': '#eee' },
                     'fire': { 'background': '#f95e5e', 'font': '#eee' },
                     'water': { 'background': '#5b83ed', 'font': '#eee' },
                     'grass': { 'background': '#3ec6a8', 'font': '#eee' },
-                    'flying': { 'background': '#9999ff', 'font': '#1a1a1a' },
+                    'flying': { 'background': '#9999ff', 'font': '#eee' },
                     'fighting': { 'background': '#80341d', 'font': '#eee' },
                     'poison': { 'background': '#953594', 'font': '#eee' },
                     'electric': { 'background': '#fcc43e', 'font': '#eee' },
                     'ground': { 'background': '#d4b25c', 'font': '#eee' },
                     'rock': { 'background': '#ffbb33', 'font': '#eee' },
                     'psychic': { 'background': '#ff4dd2', 'font': '#eee' },
-                    'ice': { 'background': '#52bdc7', 'font': '#1a1a1a' },
+                    'ice': { 'background': '#52bdc7', 'font': '#eee' },
                     'bug': { 'background': '#9cad1a', 'font': '#eee' },
                     'ghost': { 'background': '#26004d', 'font': '#eee' },
-                    'steel': { 'background': '#a6a6a6', 'font': '#1a1a1a' },
-                    'dragon': { 'background': '#632ef7', 'font': '#1a1a1a' },
+                    'steel': { 'background': '#a6a6a6', 'font': '#eee' },
+                    'dragon': { 'background': '#632ef7', 'font': '#eee' },
                     'dark': { 'background': '#262626', 'font': '#eee' },
-                    'fairy': { 'background': '#ff99ff', 'font': '#1a1a1a' },
+                    'fairy': { 'background': '#ff99ff', 'font': '#eee' },
                 };
 
                 let secondary_type;
@@ -84,7 +97,6 @@ export const fetchPokemons = (offset = 0) => async (dispatch) => {
                 if (secondary_type) {
                     secondaryColors = types[secondary_type];
                 }
-
 
                 pokemonsDetails.push({
                     name,
@@ -105,84 +117,62 @@ export const fetchPokemons = (offset = 0) => async (dispatch) => {
                     egg_groups: eggGroupsFormatted,
                     base_experience: details.base_experience,
                     gender_rate: getGenderRatio(speciesData.gender_rate),
-                    evolutions: evolutions
+                    evolutions: evolutions,
+                    first_appearance: formattedFirstAppearance,
                 });
             }
+
+            await AsyncStorage.setItem('pokemons', JSON.stringify(pokemonsDetails));
 
             dispatch(fetchPokemonsSuccess(pokemonsDetails));
         } else {
             throw new Error(`Erro da API: ${response.status}`);
         }
     } catch (error) {
-        console.log(error.message);
         dispatch(fetchPokemonsFailure(error.message));
     }
 };
 
 const processEvolutionChain = async (evolutionChainData) => {
-    const fetchPokemonIdByName = async (name) => {
-        try {
-            const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${name}`);
-            const data = await response.json();
-            return data.id;
-        } catch (error) {
-            console.error('Failed to fetch Pokémon ID by name:', error);
-            return null;
-        }
+    const fetchPokemonDetails = async (url) => {
+        const response = await fetch(url);
+        const data = await response.json();
+        return {
+            id: data.id,
+            name: capitalizeFirstLetter(data.name),
+            image: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/${data.id}.png`
+        };
     };
 
-    const addBaseForm = async (chain, evolutionSet) => {
-        const baseFormId = await fetchPokemonIdByName(chain.species.name);
-        if (baseFormId && !evolutionSet.has(baseFormId)) {
-            evolutionSet.add(baseFormId);
-            return {
-                name: capitalizeFirstLetter(chain.species.name),
-                url: chain.species.url,
-                min_level: 0, // O Pokémon base não tem nível mínimo de evolução
-                image: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/${baseFormId}.png`,
-            };
-        }
-        return null;
-    };
-
-    const processChain = async (chain, evolutions = [], evolutionSet = new Set()) => {
+    const processEvolution = async (chain, evolutions = [], evolutionSet = new Set()) => {
         if (!chain) return evolutions;
 
-        // Adiciona o Pokémon base à lista de evoluções antes de processar as evoluções subsequentes
-        const baseForm = await addBaseForm(chain, evolutionSet);
-        if (baseForm) {
-            evolutions.push(baseForm);
+        const basePokemonDetails = await fetchPokemonDetails(chain.species.url);
+        if (!evolutionSet.has(basePokemonDetails.id)) {
+            evolutions.push(basePokemonDetails);
+            evolutionSet.add(basePokemonDetails.id);
         }
 
         for (const evolveTo of chain.evolves_to) {
-            const evolutionDetailId = await fetchPokemonIdByName(evolveTo.species.name);
+            const evolutionDetails = await fetchPokemonDetails(evolveTo.species.url);
+            if (!evolutionSet.has(evolutionDetails.id)) {
+                evolutions.push(evolutionDetails);
+                evolutionSet.add(evolutionDetails.id);
 
-            if (!evolutionDetailId || evolutionSet.has(evolutionDetailId)) continue;
-            evolutionSet.add(evolutionDetailId);
-
-            const evolutionDetail = {
-                name: capitalizeFirstLetter(evolveTo.species.name),
-                url: evolveTo.species.url,
-                min_level: evolveTo.evolution_details.length > 0 && evolveTo.evolution_details[0].min_level ? evolveTo.evolution_details[0].min_level : 0,
-                image: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/${evolutionDetailId}.png`,
-            };
-            evolutions.push(evolutionDetail);
-
-            if (evolveTo.evolves_to.length > 0) {
-                await processChain(evolveTo, evolutions, evolutionSet);
+                // Recursivamente processa as evoluções do próximo nível
+                await processEvolution(evolveTo, evolutions, evolutionSet);
             }
         }
 
         return evolutions;
     };
 
-    // Inicia o processamento da cadeia com o Pokémon base
-    let evolutions = await processChain(evolutionChainData.chain);
-    // Ordena as evoluções pelo min_level
-    evolutions = evolutions.sort((a, b) => a.min_level - b.min_level);
+    const evolutions = await processEvolution(evolutionChainData.chain);
 
     return evolutions;
 };
+
+
 
 
 
@@ -260,3 +250,48 @@ const adjustName = (old_name) => {
     let name = specialNames[old_name] || old_name;
     return name
 }
+
+const formatGenerationName = (generationKey) => {
+    const generationMapping = {
+        "i": "I", "ii": "II", "iii": "III", "iv": "IV",
+        "v": "V", "vi": "VI", "vii": "VII", "viii": "VIII",
+        "ix": "IX", "x": "X", "xi": "XI", "xii": "XII",
+        "xiii": "XIII", "xiv": "XIV", "xv": "XV"
+    };
+
+    const generationSuffix = generationKey.replace('generation-', '');
+
+    const romanGeneration = generationMapping[generationSuffix];
+
+    if (romanGeneration) {
+
+        return `Generation ${romanGeneration}`;
+    } else {
+        const formattedGeneration = generationSuffix
+            .replace(/-/g, ' ')
+            .split(' ')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+        return `Generation ${formattedGeneration}`;
+    }
+};
+
+
+const findFirstAppearance = (versions) => {
+    for (const generation of Object.keys(versions).sort()) {
+        for (const version in versions[generation]) {
+            const sprites = versions[generation][version];
+            const hasValidSprite = Object.values(sprites).some(sprite => {
+                if (typeof sprite === 'object' && sprite !== null) {
+                    return Object.values(sprite).some(subSprite => subSprite !== null);
+                }
+                return sprite !== null;
+            });
+
+            if (hasValidSprite) {
+                return formatGenerationName(generation);
+            }
+        }
+    }
+    return 'Unknown';
+};

@@ -1,42 +1,17 @@
 import React, { Component } from "react";
-import { View, Text, FlatList, StyleSheet, Image, TouchableOpacity } from "react-native";
+import { View, Text, FlatList, StyleSheet, Image, TouchableOpacity, TextInput, Animated } from "react-native";
 import { connect } from 'react-redux';
 import { fetchPokemons } from '../Actions/FetchPokemon';
 import LoadingSpinner from './Components/LoadingSpinner';
 import { useNavigation } from '@react-navigation/native';
-
+import { Picker } from '@react-native-picker/picker';
+import Divider from "./Components/Divider";
 
 const capitalizeFirstLetter = (string) => {
     return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
 export class Home extends Component {
-
-    state = {
-        offset: 0,
-        loading: false
-    };
-
-    componentDidMount() {
-        this.props.fetchPokemons(this.state.offset);
-    }
-
-    handleLoadMore = () => {
-        const { loading, pokemons } = this.props;
-        const { offset } = this.state;
-
-        if (loading || pokemons.length >= 1025) return;
-
-        this.setState({ loading: true });
-
-        const newOffset = offset + 40;
-        this.props.fetchPokemons(newOffset).then(() => {
-            this.setState({
-                offset: newOffset,
-                loading: false,
-            });
-        });
-    };
 
     renderFooter = () => {
         if (this.props.pokemons.length >= 1025) {
@@ -45,9 +20,122 @@ export class Home extends Component {
         return <LoadingSpinner />;
     };
 
+    clearFilters = () => {
+        this.setState({
+            searchQuery: '',
+            typePrimary: '',
+            typeSecondary: '',
+            generation: '',
+        });
+    };
+
+    state = {
+        searchQuery: '',
+        typePrimary: '',
+        typeSecondary: '',
+        generation: '',
+    };
+
+    applyFilter = () => {
+        const { pokemons } = this.props;
+        const { searchQuery, typePrimary, typeSecondary, generation } = this.state;
+
+        if (!searchQuery && !typePrimary && !typeSecondary && !generation) {
+            return pokemons;
+        }
+
+
+
+
+        return pokemons.filter((pokemon) => {
+
+            return (
+                pokemon.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
+                (!typePrimary || pokemon.primary_type.toLowerCase() === typePrimary.toLowerCase()) &&
+                (!typeSecondary || pokemon.secondary_type?.toLowerCase() === typeSecondary.toLowerCase()) &&
+                (!generation || (pokemon.first_appearance == generation))
+            );
+        });
+    };
+
+
+    scrollToTop = () => {
+        this.flatListRef.scrollToOffset({ animated: true, offset: 0 });
+    };
+
+    renderFilters = () => {
+        const types = ['Bug', 'Dark', 'Dragon', 'Electric', 'Fairy', 'Fighting', 'Fire', 'Flying', 'Ghost', 'Grass', 'Ground', 'Ice', 'Normal', 'Poison', 'Psychic', 'Rock', 'Steel', 'Water'];
+        const generations = ['Generation I', 'Generation II', 'Generation III', 'Generation IV', 'Generation V', 'Generation VII', 'Generation VIII'];
+
+        return (
+            <View>
+                <View style={styles.filterContainer}>
+                    <TextInput
+                        placeholder="Search by name..."
+                        placeholderTextColor='black'
+                        style={styles.input}
+                        onChangeText={(text) => this.setState({ searchQuery: text })}
+                        value={this.state.searchQuery}
+                    />
+                    <View style={styles.pickerContainer}>
+                        <Picker
+                            selectedValue={this.state.typePrimary}
+                            style={styles.picker}
+                            onValueChange={(itemValue, itemIndex) =>
+                                this.setState({ typePrimary: itemValue })
+                            }>
+                            <Picker.Item label="Select Primary Type" value="" />
+                            {types.map((type, index) => (
+                                <Picker.Item key={index} label={type} value={type} />
+                            ))}
+                        </Picker>
+                    </View>
+                    <View style={styles.pickerContainer}>
+                        <Picker
+                            selectedValue={this.state.typeSecondary}
+                            style={styles.picker}
+                            onValueChange={(itemValue, itemIndex) =>
+                                this.setState({ typeSecondary: itemValue })
+                            }>
+                            <Picker.Item label="Select Secondary Type" value="" />
+                            {types.map((type, index) => (
+                                <Picker.Item key={index} label={type} value={type} />
+                            ))}
+                        </Picker>
+                    </View>
+                    <View style={styles.pickerContainer}>
+
+                        <Picker
+                            selectedValue={this.state.generation}
+                            style={styles.picker}
+                            onValueChange={(itemValue, itemIndex) =>
+                                this.setState({ generation: itemValue })
+                            }>
+                            <Picker.Item label="Select Generation" value="" />
+                            {generations.map((gen, index) => (
+                                <Picker.Item key={index} label={gen} value={gen} />
+                            ))}
+                        </Picker>
+                    </View>
+
+
+                    <TouchableOpacity onPress={this.clearFilters} style={styles.clearFiltersButton}>
+                        <Text style={styles.clearFiltersButtonText}>Clear Filters</Text>
+                    </TouchableOpacity>
+                </View>
+
+                <Divider
+                    width={40}
+                    marginVertical={30}
+                />
+            </View>
+        );
+    };
+
+
     render() {
 
-        const { pokemons, navigation } = this.props;
+        const { navigation } = this.props;
 
         const hexToRGBA = (hex, opacity) => {
             let r = 0, g = 0, b = 0;
@@ -99,19 +187,24 @@ export class Home extends Component {
             );
         };
 
+
+
         return (
             <View style={styles.container}>
                 <View style={styles.header}>
                     <Text style={styles.headerText}>Pokedex</Text>
+                    <TouchableOpacity onPress={this.scrollToTop} style={styles.returnToTopButton}>
+                        <Text style={styles.returnToTopText}>Return to Top</Text>
+                    </TouchableOpacity>
                 </View>
 
                 <FlatList
-                    data={pokemons}
-                    keyExtractor={(item) => item.id.toString()}
+                    ref={(ref) => { this.flatListRef = ref; }}
+                    data={this.applyFilter()}
+                    keyExtractor={(item, index) => item.id.toString() + ':' + index}
                     renderItem={renderPokemons}
                     numColumns={2}
-                    onEndReached={this.handleLoadMore}
-                    onEndReachedThreshold={0.99}
+                    ListHeaderComponent={this.renderFilters}
                     ListFooterComponent={this.renderFooter}
                 />
             </View>
@@ -135,8 +228,40 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
+    filterContainer: {
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
     flatlist: {
         backgroundColor: 'gray'
+    },
+    input: {
+        height: 50,
+        width: '65%',
+        marginTop: 20,
+        padding: 10,
+        paddingLeft: 18,
+        color: 'black',
+        borderRadius: 20,
+        backgroundColor: 'white',
+    },
+    picker: {
+        height: 50,
+        width: '100%',
+        backgroundColor: 'white',
+        color: 'black',
+        borderRadius: 20,
+        overflow: 'hidden'
+    },
+    pickerContainer: {
+        height: 50,
+        width: '65%',
+        marginVertical: 10,
+        borderRadius: 20,
+        overflow: 'hidden'
+    },
+    pickerItem: {
+        color: 'black',
     },
     header: {
         height: 60,
@@ -221,8 +346,31 @@ const styles = StyleSheet.create({
         fontSize: 10,
         fontWeight: 'bold',
         color: '#000',
-    }
-
+    },
+    returnToTopButton: {
+        position: 'absolute',
+        right: 10,
+        bottom: 10,
+        padding: 10,
+        backgroundColor: '#f95e5e',
+        borderRadius: 20,
+    },
+    returnToTopText: {
+        color: '#ffffff',
+        fontWeight: 'bold'
+    },
+    clearFiltersButton: {
+        marginTop: 10,
+        backgroundColor: '#f95e5e',
+        padding: 10,
+        borderRadius: 5,
+        alignItems: 'center',
+        width: '30%',
+    },
+    clearFiltersButtonText: {
+        color: '#FFFFFF',
+        fontWeight: 'bold',
+    },
 });
 
 const HomeConnect = connect(mapStateToProps, mapDispatchToProps)(Home);

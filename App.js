@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Provider, useDispatch, useSelector } from 'react-redux';
+import React, { useRef } from 'react';
+import { Provider } from 'react-redux';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
@@ -17,32 +17,7 @@ const store = configureStore({
 const Stack = createNativeStackNavigator();
 
 const AppContent = () => {
-  const dispatch = useDispatch();
-  const loading = useSelector((state) => state.pokemon.loading);
   const navigationRef = useRef(null);
-
-  const [minLoadingDone, setMinLoadingDone] = useState(false);
-
-  useEffect(() => {
-
-    const timer = setTimeout(() => {
-      setMinLoadingDone(true);
-    }, 3000);
-
-
-    return () => clearTimeout(timer);
-  }, [dispatch]);
-
-  useEffect(() => {
-
-    if (!loading && minLoadingDone) {
-      if (navigationRef.current) {
-        navigationRef.current.navigate('Home');
-      }
-    }
-  }, [loading, minLoadingDone]);
-
-
 
   return (
     <NavigationContainer ref={navigationRef}>
