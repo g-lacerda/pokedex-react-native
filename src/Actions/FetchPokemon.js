@@ -1,297 +1,348 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  capitalizeFirstLetter,
+  adjustName,
+  getGenderRatio,
+  findFirstAppearance,
+  processEvolutionChain,
+  getTypeColors,
+} from '../Utils/pokemonUtils';
 
 export const fetchPokemonsRequest = () => ({
-    type: 'fetch_pokemons_request'
+  type: 'fetch_pokemons_request',
 });
 
-export const fetchPokemonsSuccess = (pokemons) => ({
-    type: 'fetch_pokemons_success',
-    payload: pokemons
+export const fetchPokemonsSuccess = (
+  pokemons,
+  append = false,
+  isFiltered = false
+) => ({
+  type: isFiltered ? 'fetch_filtered_success' : 'fetch_all_success',
+  payload: pokemons,
+  append,
 });
 
 export const fetchPokemonsFailure = (error) => ({
-    type: 'fetch_pokemons_failure',
-    payload: error
+  type: 'fetch_pokemons_failure',
+  payload: error,
 });
 
-export const fetchPokemons = () => async (dispatch) => {
-    const cachedPokemons = await AsyncStorage.getItem('pokemons');
-    const limit = 1025;
-
-    if (cachedPokemons) {
-        const pokemonsArray = JSON.parse(cachedPokemons);
-        if (pokemonsArray.length == limit) {
-            dispatch(fetchPokemonsSuccess(JSON.parse(cachedPokemons)));
-            return;
-        }
-
-    }
+export const fetchPokemons =
+  (offset = 0, limit = 20, filters = {}, forceUnfiltered = false) =>
+  async (dispatch) => {
     dispatch(fetchPokemonsRequest());
+
     try {
-        const url = `https://pokeapi.co/api/v2/pokemon?limit=${limit}`;
-        const response = await fetch(url);
-        const data = await response.json();
+      const {
+        typePrimary = '',
+        typeSecondary = '',
+        generation = '',
+        searchQuery = '',
+      } = filters;
 
-        if (response.ok) {
+      // 🔎 1. Busca direta por nome
+      if (searchQuery.trim()) {
+        try {
+          const res = await fetch(
+            `https://pokeapi.co/api/v2/pokemon/${searchQuery
+              .trim()
+              .toLowerCase()}`
+          );
+          if (!res.ok) throw new Error('Not found');
 
-            let pokemonsDetails = [];
+          const details = await res.json();
+          const speciesRes = await fetch(
+            `https://pokeapi.co/api/v2/pokemon-species/${details.id}`
+          );
+          const species = await speciesRes.json();
+          const evolutions = await processEvolutionChain(
+            species.evolution_chain.url
+          );
+          const formattedFirstAppearance = findFirstAppearance(
+            details.sprites.versions
+          );
 
-            for (const pokemon of data.results) {
-                const detailsResponse = await fetch(pokemon.url);
-                const details = await detailsResponse.json();
+          const primaryType = details.types[0].type.name;
+          const secondaryType = details.types[1]?.type.name;
+          const colors = getTypeColors(primaryType, secondaryType);
 
-                const speciesResponse = await fetch(`https://pokeapi.co/api/v2/pokemon-species/${details.id}`);
-                const speciesData = await speciesResponse.json();
+          const pokemon = {
+            id: details.id,
+            name: adjustName(details.name),
+            image: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/${details.id}.png`,
+            primary_type: capitalizeFirstLetter(primaryType),
+            secondary_type: secondaryType
+              ? capitalizeFirstLetter(secondaryType)
+              : '',
+            colors,
+            description:
+              species.flavor_text_entries
+                .find(
+                  (entry) =>
+                    entry.language.name === 'en' &&
+                    ['ruby', 'platinum', 'soulsilver'].includes(
+                      entry.version.name
+                    )
+                )
+                ?.flavor_text.replace(/POK[eé]MON/g, 'POKÉMON') || '',
+            height: `${(details.height / 10).toFixed(2)} m`,
+            weight: `${(details.weight / 10).toFixed(2)} kg`,
+            types: details.types.map((t) => ({
+              name: capitalizeFirstLetter(t.type.name),
+              url: t.type.url,
+            })),
+            stats: details.stats.map((stat) => ({
+              base_stat: stat.base_stat,
+              name: capitalizeFirstLetter(stat.stat.name.replace(/-/g, ' ')),
+              url: stat.stat.url,
+            })),
+            abilities: details.abilities.map((a) => ({
+              name: capitalizeFirstLetter(a.ability.name),
+              url: a.ability.url,
+            })),
+            egg_groups: species.egg_groups.map((e) => ({
+              name: capitalizeFirstLetter(e.name),
+              url: e.url,
+            })),
+            base_experience: details.base_experience,
+            gender_rate: getGenderRatio(species.gender_rate),
+            evolutions,
+            first_appearance: formattedFirstAppearance,
+          };
 
-                const firstAppearance = (details.sprites.versions);
-                const formattedFirstAppearance = findFirstAppearance(firstAppearance)
-
-
-                const evolutionChainResponse = await fetch(speciesData.evolution_chain.url);
-                const evolutionChainData = await evolutionChainResponse.json();
-
-                const evolutions = await processEvolutionChain(evolutionChainData, details.id);
-
-                const typesFormatted = details.types.map(type => ({ name: capitalizeFirstLetter(type.type.name), url: type.type.url }));
-                const statsFormatted = details.stats.map(stat => {
-                    const statName = stat.stat.name.replace(/-\w/g, m => m[1].toUpperCase()).replace('attack', 'Attack').replace('special', 'Special ').replace('hp', 'HP').replace('defense', 'Defense').replace('speed', 'Speed');
-                    return { base_stat: stat.base_stat, name: statName, url: stat.stat.url };
-                });
-                const abilitiesFormatted = details.abilities.map(ability => ({ name: capitalizeFirstLetter(ability.ability.name), url: ability.ability.url }));
-                const eggGroupsFormatted = speciesData.egg_groups.map(eggGroup => ({ name: capitalizeFirstLetter(eggGroup.name), url: eggGroup.url }));
-
-                const description = speciesData.flavor_text_entries.find(entry => entry.language.name === 'en' && ['ruby', 'platinum', 'soulsilver'].includes(entry.version.name))?.flavor_text.replace(/POKéMON/g, 'POKÉMON') || '';
-
-                let name = adjustName(pokemon.name);
-
-                const types = {
-                    'normal': { 'background': '#9d9a6b', 'font': '#eee' },
-                    'fire': { 'background': '#f95e5e', 'font': '#eee' },
-                    'water': { 'background': '#5b83ed', 'font': '#eee' },
-                    'grass': { 'background': '#3ec6a8', 'font': '#eee' },
-                    'flying': { 'background': '#9999ff', 'font': '#eee' },
-                    'fighting': { 'background': '#80341d', 'font': '#eee' },
-                    'poison': { 'background': '#953594', 'font': '#eee' },
-                    'electric': { 'background': '#fcc43e', 'font': '#eee' },
-                    'ground': { 'background': '#d4b25c', 'font': '#eee' },
-                    'rock': { 'background': '#ffbb33', 'font': '#eee' },
-                    'psychic': { 'background': '#ff4dd2', 'font': '#eee' },
-                    'ice': { 'background': '#52bdc7', 'font': '#eee' },
-                    'bug': { 'background': '#9cad1a', 'font': '#eee' },
-                    'ghost': { 'background': '#26004d', 'font': '#eee' },
-                    'steel': { 'background': '#a6a6a6', 'font': '#eee' },
-                    'dragon': { 'background': '#632ef7', 'font': '#eee' },
-                    'dark': { 'background': '#262626', 'font': '#eee' },
-                    'fairy': { 'background': '#ff99ff', 'font': '#eee' },
-                };
-
-                let secondary_type;
-                if (details.types.length > 1) {
-                    secondary_type = details.types[1].type.name;
-                }
-
-                const primary_type = details.types[0].type.name;
-                const primaryColors = types[primary_type];
-
-                let secondaryColors;
-                if (secondary_type) {
-                    secondaryColors = types[secondary_type];
-                }
-
-                pokemonsDetails.push({
-                    name,
-                    id: details.id,
-                    image: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/${details.id}.png`,
-                    primary_type: typesFormatted[0]?.name || '',
-                    secondary_type: typesFormatted[1]?.name || '',
-                    colors: {
-                        primary: primaryColors,
-                        secondary: secondaryColors
-                    },
-                    description,
-                    height: (details.height / 10).toFixed(2) + ' m',
-                    weight: (details.weight / 10).toFixed(2) + ' kg',
-                    types: typesFormatted,
-                    stats: statsFormatted,
-                    abilities: abilitiesFormatted,
-                    egg_groups: eggGroupsFormatted,
-                    base_experience: details.base_experience,
-                    gender_rate: getGenderRatio(speciesData.gender_rate),
-                    evolutions: evolutions,
-                    first_appearance: formattedFirstAppearance,
-                });
-            }
-
-            await AsyncStorage.setItem('pokemons', JSON.stringify(pokemonsDetails));
-
-            dispatch(fetchPokemonsSuccess(pokemonsDetails));
-        } else {
-            throw new Error(`Erro da API: ${response.status}`);
+          dispatch(fetchPokemonsSuccess([pokemon], false, true));
+          return [pokemon];
+        } catch (err) {
+          dispatch(fetchPokemonsSuccess([], false, true));
+          return [];
         }
-    } catch (error) {
-        dispatch(fetchPokemonsFailure(error.message));
-    }
-};
+      }
 
-const processEvolutionChain = async (evolutionChainData) => {
-    const fetchPokemonDetails = async (url) => {
-        const response = await fetch(url);
-        const data = await response.json();
-        return {
-            id: data.id,
-            name: capitalizeFirstLetter(data.name),
-            image: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/${data.id}.png`
+      let baseList = [];
+
+      // 📅 2. Se tiver filtro por geração, busque todos os pokémons da geração
+      if (generation) {
+        const generationMap = {
+          'Generation I': 1,
+          'Generation II': 2,
+          'Generation III': 3,
+          'Generation IV': 4,
+          'Generation V': 5,
+          'Generation VI': 6,
+          'Generation VII': 7,
+          'Generation VIII': 8,
+          'Generation IX': 9,
         };
-    };
 
-    const processEvolution = async (chain, evolutions = [], evolutionSet = new Set()) => {
-        if (!chain) return evolutions;
+        const generationNumber = generationMap[generation];
 
-        const basePokemonDetails = await fetchPokemonDetails(chain.species.url);
-        if (!evolutionSet.has(basePokemonDetails.id)) {
-            evolutions.push(basePokemonDetails);
-            evolutionSet.add(basePokemonDetails.id);
+        if (!generationNumber) throw new Error('Geração inválida');
+
+        const genRes = await fetch(
+          `https://pokeapi.co/api/v2/generation/${generationNumber}`
+        );
+        const genData = await genRes.json();
+
+        const generationSpecies = genData.pokemon_species
+          .map((s) => {
+            const id = parseInt(s.url.split('/').filter(Boolean).pop());
+            return {
+              id,
+              url: `https://pokeapi.co/api/v2/pokemon/${id}`,
+            };
+          })
+          .sort((a, b) => a.id - b.id); // 🧠 ordena por ID crescente
+
+        baseList = generationSpecies;
+
+        baseList = generationSpecies;
+      }
+
+      // 🧪 3. Caso sem geração: com tipos ou geral
+      if (!generation) {
+        if (typePrimary || typeSecondary) {
+          const typesToFetch = [];
+          if (typePrimary) typesToFetch.push(typePrimary.toLowerCase());
+          if (typeSecondary && typeSecondary !== typePrimary)
+            typesToFetch.push(typeSecondary.toLowerCase());
+
+          const typeResults = await Promise.all(
+            typesToFetch.map((type) =>
+              fetch(`https://pokeapi.co/api/v2/type/${type}`).then((res) =>
+                res.json()
+              )
+            )
+          );
+
+          const allTypeIds = typeResults.map((r) =>
+            r.pokemon.map((p) =>
+              parseInt(p.pokemon.url.split('/').filter(Boolean).pop())
+            )
+          );
+
+          let filteredIds =
+            allTypeIds.length > 1
+              ? allTypeIds.reduce((a, b) => a.filter((id) => b.includes(id)))
+              : allTypeIds[0];
+
+          baseList = filteredIds.map((id) => ({
+            url: `https://pokeapi.co/api/v2/pokemon/${id}`,
+          }));
+        } else {
+          // 🔄 4. Sem filtros: paginar com offset/limit direto da API
+          const baseRes = await fetch(
+            `https://pokeapi.co/api/v2/pokemon?offset=${offset}&limit=${limit}`
+          );
+          const baseData = await baseRes.json();
+          baseList = baseData.results;
         }
+      }
 
-        for (const evolveTo of chain.evolves_to) {
-            const evolutionDetails = await fetchPokemonDetails(evolveTo.species.url);
-            if (!evolutionSet.has(evolutionDetails.id)) {
-                evolutions.push(evolutionDetails);
-                evolutionSet.add(evolutionDetails.id);
+      // 🔍 5. Obter detalhes e aplicar filtros de tipo
+      const detailsFull = await Promise.all(
+        baseList.map(async (pokemon) => {
+          try {
+            const details = await (await fetch(pokemon.url)).json();
+            const species = await (
+              await fetch(
+                `https://pokeapi.co/api/v2/pokemon-species/${details.id}`
+              )
+            ).json();
+            const evolutions = await processEvolutionChain(
+              species.evolution_chain.url
+            );
+            const formattedFirstAppearance = findFirstAppearance(
+              details.sprites.versions
+            );
 
-                // Recursivamente processa as evoluções do próximo nível
-                await processEvolution(evolveTo, evolutions, evolutionSet);
-            }
-        }
+            const primaryType = details.types[0].type.name;
+            const secondaryType = details.types[1]?.type.name;
+            const pokemonTypes = [
+              primaryType?.toLowerCase(),
+              secondaryType?.toLowerCase(),
+            ];
 
-        return evolutions;
-    };
+            if (
+              typePrimary &&
+              typeSecondary &&
+              !(
+                pokemonTypes.includes(typePrimary.toLowerCase()) &&
+                pokemonTypes.includes(typeSecondary.toLowerCase())
+              )
+            )
+              return null;
 
-    const evolutions = await processEvolution(evolutionChainData.chain);
+            if (
+              typePrimary &&
+              !typeSecondary &&
+              !pokemonTypes.includes(typePrimary.toLowerCase())
+            )
+              return null;
+            if (
+              typeSecondary &&
+              !typePrimary &&
+              !pokemonTypes.includes(typeSecondary.toLowerCase())
+            )
+              return null;
 
-    return evolutions;
-};
+            const colors = getTypeColors(primaryType, secondaryType);
 
+            return {
+              id: details.id,
+              name: adjustName(details.name),
+              image: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/${details.id}.png`,
+              primary_type: capitalizeFirstLetter(primaryType),
+              secondary_type: secondaryType
+                ? capitalizeFirstLetter(secondaryType)
+                : '',
+              colors,
+              description:
+                species.flavor_text_entries
+                  .find(
+                    (entry) =>
+                      entry.language.name === 'en' &&
+                      ['ruby', 'platinum', 'soulsilver'].includes(
+                        entry.version.name
+                      )
+                  )
+                  ?.flavor_text.replace(/POK[eé]MON/g, 'POKÉMON') || '',
+              height: `${(details.height / 10).toFixed(2)} m`,
+              weight: `${(details.weight / 10).toFixed(2)} kg`,
+              types: details.types.map((t) => ({
+                name: capitalizeFirstLetter(t.type.name),
+                url: t.type.url,
+              })),
+              stats: details.stats.map((stat) => ({
+                base_stat: stat.base_stat,
+                name: capitalizeFirstLetter(stat.stat.name.replace(/-/g, ' ')),
+                url: stat.stat.url,
+              })),
+              abilities: details.abilities.map((a) => ({
+                name: capitalizeFirstLetter(a.ability.name),
+                url: a.ability.url,
+              })),
+              moves: await Promise.all(
+                details.moves
+                  .filter((m) =>
+                    m.version_group_details.some(
+                      (v) => v.move_learn_method.name === 'level-up'
+                    )
+                  )
+                  .map(async (m) => {
+                    const levelDetail = m.version_group_details.find(
+                      (v) => v.move_learn_method.name === 'level-up'
+                    );
+                    const moveDetails = await (await fetch(m.move.url)).json();
 
+                    return {
+                      name: capitalizeFirstLetter(
+                        moveDetails.name.replace(/-/g, ' ')
+                      ),
+                      type: capitalizeFirstLetter(moveDetails.type.name),
+                      category: capitalizeFirstLetter(
+                        moveDetails.damage_class.name
+                      ),
+                      power: moveDetails.power ?? '—',
+                      accuracy: moveDetails.accuracy ?? '—',
+                      pp: moveDetails.pp,
+                      level: levelDetail?.level_learned_at || 0,
+                    };
+                  })
+              ).then((moves) => moves.sort((a, b) => a.level - b.level)),
+              egg_groups: species.egg_groups.map((e) => ({
+                name: capitalizeFirstLetter(e.name),
+                url: e.url,
+              })),
+              base_experience: details.base_experience,
+              gender_rate: getGenderRatio(species.gender_rate),
+              evolutions,
+              first_appearance: formattedFirstAppearance,
+            };
+          } catch (e) {
+            return null;
+          }
+        })
+      );
 
+      const validDetails = detailsFull.filter(Boolean);
 
+      // 📦 6. Paginação final (apenas se geração/tipo ativos)
+      const finalResults =
+        typePrimary || typeSecondary || generation
+          ? validDetails.slice(offset, offset + limit)
+          : validDetails;
 
-const capitalizeFirstLetter = (string) => {
-    return string.charAt(0).toUpperCase() + string.slice(1);
-};
-
-const getGenderRatio = (genderRate) => {
-    if (genderRate === -1) {
-        return { male: 'No gender', female: 'No gender' };
-    } else if (genderRate === 0) {
-        return { male: 100, female: 0 };
-    } else if (genderRate === 8) {
-        return { male: 0, female: 100 };
-    } else {
-        const femalePercentage = genderRate * 12.5;
-        const malePercentage = 100 - femalePercentage;
-        return { male: malePercentage, female: femalePercentage };
+      const isFiltered =
+        !forceUnfiltered && (typePrimary || typeSecondary || generation);
+      dispatch(fetchPokemonsSuccess(finalResults, offset > 0, isFiltered));
+      return finalResults;
+    } catch (error) {
+      dispatch(fetchPokemonsFailure(error.message));
     }
-};
+  };
 
-const adjustName = (old_name) => {
-    const specialNames = {
-        'nidoran-f': 'Nidoran Female',
-        'nidoran-m': 'Nidoran Male',
-        'mr-mime': 'Mr. Mime',
-        'deoxys-normal': 'Deoxys Normal',
-        'wormadam-plant': 'Wormadam Plant',
-        'mime-jr': 'Mime Jr.',
-        'giratina-altered': 'Giratina Altered',
-        'shaymin-land': 'Shaymin Land',
-        'basculin-red-striped': 'Basculin Red-Striped',
-        'darmanitan-standard': 'Darmanitan Standard',
-        'thundurus-incarnate': 'Thundurus Incarnate',
-        'tornadus-incarnate': 'Tornadus Incarnate',
-        'keldeo-ordinary': 'Keldeo Ordinary',
-        'meloetta-aria': 'Meloetta Aria',
-        'landorus-incarnate': 'Landorus Incarnate',
-        'meowstic-male': 'Meowstic Male',
-        'aegislash-shield': 'Aegislash Shield',
-        'pumpkaboo-average': 'Pumpkaboo Average',
-        'zygarde-50': 'Zygarde 50%',
-        'gourgeist-average': 'Gourgeist Average',
-        'oricorio-baile': 'Oricorio Baile',
-        'lycanroc-midday': 'Lycanroc Midday',
-        'wishiwashi-solo': 'Wishiwashi Solo',
-        'minior-red-meteor': 'Minior Red Meteor',
-        'mimikyu-disguised': 'Mimikyu Disguised',
-        'toxtricity-amped': 'Toxtricity Amped',
-        'mr-rime': 'Mr. Rime',
-        'morpeko-full-belly': 'Morpeko Full Belly',
-        'eiscue-ice': 'Eiscue Ice',
-        'indeedee-male': 'Indeedee Male',
-        'urshifu-single-strike': 'Urshifu Single Strike',
-        'basculegion-male': 'Basculegion Male',
-        'enamorus-incarnate': 'Enamorus Incarnate',
-        'great-tusk': 'Great Tusk',
-        'flutter-mane': 'Flutter Mane',
-        'brute-bonnet': 'Brute Bonnet',
-        'slither-wing': 'Slither Wing',
-        'sandy-shocks': 'Sandy Shocks',
-        'iron-treads': 'Iron Treads',
-        'iron-hands': 'Iron Hands',
-        'iron-jugulis': 'Iron Jugulis',
-        'walking-wake': 'Walking Wake',
-        'iron-moth': 'Iron Moth',
-        'iron-thorns': 'Iron Thorns',
-        'roaring-moon': 'Roaring Moon',
-        'gouging-fire': 'Gouging Fire',
-        'raging-bolt': 'Raging Bolt',
-        'iron-crown': 'Iron Crown',
-        'iron-boulder': 'Iron Boulder'
-    };
-
-    let name = specialNames[old_name] || old_name;
-    return name
-}
-
-const formatGenerationName = (generationKey) => {
-    const generationMapping = {
-        "i": "I", "ii": "II", "iii": "III", "iv": "IV",
-        "v": "V", "vi": "VI", "vii": "VII", "viii": "VIII",
-        "ix": "IX", "x": "X", "xi": "XI", "xii": "XII",
-        "xiii": "XIII", "xiv": "XIV", "xv": "XV"
-    };
-
-    const generationSuffix = generationKey.replace('generation-', '');
-
-    const romanGeneration = generationMapping[generationSuffix];
-
-    if (romanGeneration) {
-
-        return `Generation ${romanGeneration}`;
-    } else {
-        const formattedGeneration = generationSuffix
-            .replace(/-/g, ' ')
-            .split(' ')
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(' ');
-        return `Generation ${formattedGeneration}`;
-    }
-};
-
-
-const findFirstAppearance = (versions) => {
-    for (const generation of Object.keys(versions).sort()) {
-        for (const version in versions[generation]) {
-            const sprites = versions[generation][version];
-            const hasValidSprite = Object.values(sprites).some(sprite => {
-                if (typeof sprite === 'object' && sprite !== null) {
-                    return Object.values(sprite).some(subSprite => subSprite !== null);
-                }
-                return sprite !== null;
-            });
-
-            if (hasValidSprite) {
-                return formatGenerationName(generation);
-            }
-        }
-    }
-    return 'Unknown';
+export const clearFilteredList = () => {
+  return (dispatch) => {
+    dispatch({ type: 'clear_filtered_list' });
+  };
 };

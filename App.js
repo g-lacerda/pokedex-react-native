@@ -10,6 +10,8 @@ import Loading from './src/screens/Loading';
 import { configureStore } from '@reduxjs/toolkit';
 import Reducers from './src/Reducers';
 
+import { Provider as PaperProvider } from 'react-native-paper';
+
 const store = configureStore({
   reducer: Reducers,
 });
@@ -20,16 +22,29 @@ const AppContent = () => {
   const navigationRef = useRef(null);
 
   return (
-    <NavigationContainer ref={navigationRef}>
-      <Stack.Navigator initialRouteName="Loading">
-        <Stack.Screen name="Loading" component={Loading} options={{ headerShown: false }} />
-        <Stack.Screen name="Home" component={Home} options={{ headerShown: false }} />
-        <Stack.Screen name="Pokemon" component={Pokemon} options={{ headerShown: false }} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <PaperProvider>
+      <NavigationContainer ref={navigationRef}>
+        <Stack.Navigator initialRouteName="Loading">
+          <Stack.Screen
+            name="Loading"
+            component={Loading}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Home"
+            component={Home}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Pokemon"
+            component={Pokemon}
+            options={{ headerShown: false }}
+          />
+        </Stack.Navigator>
+      </NavigationContainer>
+    </PaperProvider>
   );
 };
-
 
 export default class App extends React.Component {
   render() {
