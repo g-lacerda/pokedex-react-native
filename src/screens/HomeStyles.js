@@ -16,7 +16,7 @@ export default StyleSheet.create({
   headerTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#eee',
+    color: '#fff',
   },
   headerButtonsContainer: {
     flexDirection: 'row',
